@@ -26,6 +26,8 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  Hand,
+  Bot,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +76,14 @@ interface MessageThreadProps {
     conversationId: string,
     assignedAgentId: string | null,
   ) => void;
+  /**
+   * Fired after the IA-handoff flag is flipped on this conversation.
+   * `ai_handoff === true` means a human took over and the AI agent stops
+   * auto-replying (enforced in `src/lib/ai-agent/handle.ts`); `false`
+   * hands control back to the IA. Lets the page do an optimistic update
+   * of the list + active-conversation copies.
+   */
+  onHandoffChange: (conversationId: string, aiHandoff: boolean) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
    * hidden. This callback lets the page deselect the active conversation
@@ -159,6 +169,7 @@ export function MessageThread({
   onUpdateMessage,
   onStatusChange,
   onAssignChange,
+  onHandoffChange,
   onBack,
   resyncToken = 0,
   onRefresh,
@@ -778,6 +789,40 @@ export function MessageThread({
     [conversation, onAssignChange],
   );
 
+  // Flip the IA-handoff barrier for this conversation. `true` = human
+  // takes over (IA para de responder), `false` = devolve o atendimento
+  // para a IA. Follows the same supabase-update pattern as the status /
+  // assignment handlers above. `isHandoffSaving` guards against a
+  // double-click firing two updates while the first is in flight.
+  const [isHandoffSaving, setIsHandoffSaving] = useState(false);
+  const handleHandoffChange = useCallback(
+    async (aiHandoff: boolean) => {
+      if (!conversation || isHandoffSaving) return;
+
+      setIsHandoffSaving(true);
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .update({ ai_handoff: aiHandoff })
+        .eq("id", conversation.id);
+      setIsHandoffSaving(false);
+
+      if (error) {
+        console.error("Failed to update ai_handoff:", error);
+        toast.error("Falha ao atualizar o atendimento");
+        return;
+      }
+
+      onHandoffChange(conversation.id, aiHandoff);
+      toast.success(
+        aiHandoff
+          ? "Você assumiu o atendimento. A IA da 3R não responde mais nesta conversa."
+          : "IA da 3R reativada nesta conversa.",
+      );
+    },
+    [conversation, isHandoffSaving, onHandoffChange],
+  );
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -807,6 +852,9 @@ export function MessageThread({
   const assignLabel = assignedAgentId
     ? (currentAssignee?.full_name ?? "Atribuída")
     : "Atribuir";
+  // Undefined (older cached rows) reads as "IA ativa" — the safe default
+  // that matches the DB column's `DEFAULT false`.
+  const aiHandoff = conversation.ai_handoff === true;
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -994,6 +1042,49 @@ export function MessageThread({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* IA handoff control. When the IA is active, a single
+              "Assumir atendimento" button lets the agent take over (sets
+              ai_handoff=true → the bot stops auto-replying). Once a human
+              is in control, a discreet "Atendimento humano" badge marks
+              the state and a "Reativar IA" button hands it back. Mirrors
+              the size/shape of the status + assign controls. */}
+          {aiHandoff ? (
+            <>
+              <Badge
+                variant="outline"
+                className="hidden gap-1 border-amber-500/40 text-[10px] text-amber-400 sm:inline-flex"
+              >
+                <Hand className="h-3 w-3" />
+                Atendimento humano
+              </Badge>
+              <button
+                type="button"
+                onClick={() => handleHandoffChange(false)}
+                disabled={isHandoffSaving}
+                title="Devolver o atendimento para a IA da 3R"
+                className={cn(
+                  "inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
+                )}
+              >
+                <Bot className="h-3 w-3" />
+                <span className="hidden sm:inline">Reativar IA</span>
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleHandoffChange(true)}
+              disabled={isHandoffSaving}
+              title="Assumir o atendimento — a IA da 3R para de responder"
+              className={cn(
+                "inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
+              )}
+            >
+              <Hand className="h-3 w-3" />
+              <span className="hidden sm:inline">Assumir atendimento</span>
+            </button>
+          )}
         </div>
       </div>
 

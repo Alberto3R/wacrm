@@ -89,7 +89,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Painel", icon: LayoutDashboard },
-  { href: "/inbox", label: "Caixa de entrada", icon: MessageSquare },
+  { href: "/inbox", label: "Conversas", icon: MessageSquare },
   { href: "/contacts", label: "Contatos", icon: Users },
   { href: "/pipelines", label: "Funis", icon: GitBranch },
   { href: "/broadcasts", label: "Disparos", icon: Radio },

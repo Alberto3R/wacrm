@@ -153,6 +153,14 @@ export interface Conversation {
   last_message_text?: string;
   last_message_at?: string;
   unread_count: number;
+  /**
+   * When `true`, the AI agent stops auto-replying on this conversation —
+   * a human has taken over. Added by `028_ai_agent.sql` (NOT NULL DEFAULT
+   * false in the DB). The barrier is enforced server-side in
+   * `src/lib/ai-agent/handle.ts`; the inbox header toggles it via the
+   * "Assumir atendimento" / "Reativar IA" control.
+   */
+  ai_handoff?: boolean;
   created_at: string;
   updated_at: string;
   contact?: Contact;
