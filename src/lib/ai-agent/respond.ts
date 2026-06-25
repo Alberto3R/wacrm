@@ -53,6 +53,8 @@ function buildUserMessage(history: AgentTurn[], incoming: string): string {
     '',
     `Nova mensagem: ${incoming}`,
     '',
+    'Estilo da "reply": CURTA — no máximo 2 ou 3 frases, ritmo de WhatsApp, uma ideia por vez. Nada de textão. Para separar ideias em mensagens distintas, use uma linha em branco entre elas.',
+    '',
     'Responda com o objeto JSON conforme o FORMATO DE SAÍDA.',
   ].join('\n')
 }

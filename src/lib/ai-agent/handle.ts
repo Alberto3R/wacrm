@@ -48,6 +48,21 @@ async function sendText(
   }
 }
 
+/**
+ * Quebra a resposta em mensagens curtas (ritmo de WhatsApp). Separa por
+ * linha em branco; limita a 4 balões pra não floodar (o excedente vai
+ * junto no último). Sempre devolve ao menos 1 parte.
+ */
+function splitReply(text: string): string[] {
+  const parts = text
+    .split(/\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (parts.length === 0) return [text.trim()]
+  if (parts.length <= 4) return parts
+  return [...parts.slice(0, 3), parts.slice(3).join('\n\n')]
+}
+
 async function insertBotMessage(
   supabase: SupabaseClient,
   conversationId: string,
@@ -148,13 +163,17 @@ export async function maybeRunAgent(params: {
   })
   if (!result || !result.reply.trim()) return
 
-  // 6. Envia a resposta + grava como mensagem do bot
-  const mid = await sendText(phoneNumberId, accessToken, contactWaId, result.reply)
-  await insertBotMessage(supabase, conversationId, result.reply, mid)
+  // 6. Envia a resposta — quebrada em mensagens curtas (ritmo de WhatsApp),
+  // cada balão gravado como mensagem do bot.
+  const parts = splitReply(result.reply)
+  for (const part of parts) {
+    const mid = await sendText(phoneNumberId, accessToken, contactWaId, part)
+    await insertBotMessage(supabase, conversationId, part, mid)
+  }
   await supabase
     .from('conversations')
     .update({
-      last_message_text: result.reply,
+      last_message_text: parts[parts.length - 1],
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       // 7. Handoff decidido pelo modelo → para de responder, espera humano
