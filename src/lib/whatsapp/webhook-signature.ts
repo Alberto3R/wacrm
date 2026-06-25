@@ -17,13 +17,19 @@ import crypto from 'node:crypto'
  *   secret. A previous version fell open with a warning log, which is
  *   unsafe for a public template: anyone who forgets the env var would
  *   be running a fully spoofable webhook.
+ *
+ *   Multi-brand: a single CRM can receive from WABAs that belong to
+ *   *different* Meta apps (e.g. AUGRA and Elas que Vendem), each signing
+ *   with its own App Secret. `META_APP_SECRET` therefore accepts a
+ *   comma-separated list; the signature is accepted if it matches ANY
+ *   listed secret. A single value stays valid (the common case).
  */
 export function verifyMetaWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
 ): boolean {
-  const secret = process.env.META_APP_SECRET
-  if (!secret) {
+  const raw = process.env.META_APP_SECRET
+  if (!raw) {
     console.error(
       '[webhook] META_APP_SECRET is not set — rejecting request. ' +
         'Configure the env var (Meta → App Settings → Basic → App Secret) ' +
@@ -35,13 +41,20 @@ export function verifyMetaWebhookSignature(
   if (!signatureHeader) return false
   if (!signatureHeader.startsWith('sha256=')) return false
 
-  const expected =
-    'sha256=' +
-    crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
+  const secrets = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const sigBuf = Buffer.from(signatureHeader)
 
-  const a = Buffer.from(signatureHeader)
-  const b = Buffer.from(expected)
-  // Bail if lengths differ — timingSafeEqual throws otherwise.
-  if (a.length !== b.length) return false
-  return crypto.timingSafeEqual(a, b)
+  for (const secret of secrets) {
+    const expected =
+      'sha256=' +
+      crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
+    const expBuf = Buffer.from(expected)
+    // timingSafeEqual throws on length mismatch — guard first.
+    if (sigBuf.length !== expBuf.length) continue
+    if (crypto.timingSafeEqual(sigBuf, expBuf)) return true
+  }
+  return false
 }

@@ -14,6 +14,7 @@
  */
 
 export const THEME_IDS = [
+  "sales3r",
   "violet",
   "emerald",
   "cobalt",
@@ -23,9 +24,9 @@ export const THEME_IDS = [
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-export const DEFAULT_THEME: ThemeId = "violet";
+export const DEFAULT_THEME: ThemeId = "sales3r";
 
-export const STORAGE_KEY = "wacrm.theme";
+export const STORAGE_KEY = "sales3r.theme";
 
 /**
  * MODE — the light/dark dimension, orthogonal to the accent theme.
@@ -37,7 +38,7 @@ export const STORAGE_KEY = "wacrm.theme";
  * opt-in eye-strain-friendly alternative.
  *
  * Persisted under its own localStorage key so it composes freely
- * with the accent choice (you can run Violet-light or Violet-dark).
+ * with the accent choice (you can run Sales 3R-light or -dark).
  */
 export const MODES = ["light", "dark"] as const;
 
@@ -45,7 +46,7 @@ export type Mode = (typeof MODES)[number];
 
 export const DEFAULT_MODE: Mode = "dark";
 
-export const MODE_STORAGE_KEY = "wacrm.mode";
+export const MODE_STORAGE_KEY = "sales3r.mode";
 
 export function isMode(value: unknown): value is Mode {
   return (
@@ -68,33 +69,39 @@ export interface ThemeMeta {
 
 export const THEMES: ReadonlyArray<ThemeMeta> = [
   {
+    id: "sales3r",
+    name: "Sales 3R",
+    tagline: "Verde 3R — a cor de assinatura da marca.",
+    swatch: "oklch(0.847 0.200 128.1)",
+  },
+  {
     id: "violet",
     name: "Violet",
-    tagline: "The default — confident, slightly playful.",
+    tagline: "Confiante, levemente lúdico.",
     swatch: "oklch(0.526 0.247 293)",
   },
   {
     id: "emerald",
     name: "Emerald",
-    tagline: "Growth-coded, nods at messaging without copying WhatsApp green.",
+    tagline: "Crescimento — sem copiar o verde do WhatsApp.",
     swatch: "oklch(0.62 0.16 162)",
   },
   {
     id: "cobalt",
     name: "Cobalt",
-    tagline: "Clean B2B-SaaS blue — calm and product-y.",
+    tagline: "Azul B2B-SaaS — calmo e técnico.",
     swatch: "oklch(0.585 0.2 254)",
   },
   {
     id: "amber",
     name: "Amber",
-    tagline: "Warm and friendly — feels good for SMB teams.",
+    tagline: "Quente e amigável — bom para times de PME.",
     swatch: "oklch(0.745 0.16 65)",
   },
   {
     id: "rose",
     name: "Rose",
-    tagline: "Bold and modern — D2C, creator-economy, lifestyle.",
+    tagline: "Ousado e moderno — D2C, creator economy.",
     swatch: "oklch(0.645 0.22 16)",
   },
 ];
