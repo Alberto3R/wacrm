@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
@@ -182,10 +182,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Process asynchronously so we can ack Meta within their timeout.
-  processWebhook(body).catch((error) => {
-    console.error('Error processing webhook:', error)
-  })
+  // Ack Meta immediately, but finish the work in `after()` so the
+  // serverless function stays alive until processing completes.
+  //
+  // The original code fired `processWebhook(body)` WITHOUT awaiting and
+  // returned 200 right away. On a long-lived VPS (what this template
+  // targets) the Node process keeps the event loop running, so the work
+  // finishes. On Vercel serverless the function is FROZEN the instant the
+  // response is returned — the un-awaited promise is killed mid-flight,
+  // so most inbound messages were silently dropped (only the occasional
+  // one that happened to finish first survived). `after()` registers the
+  // work with the platform's waitUntil, keeping the invocation alive
+  // until it resolves, while still acking Meta within its timeout.
+  after(
+    processWebhook(body).catch((error) => {
+      console.error('Error processing webhook:', error)
+    }),
+  )
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
@@ -702,17 +715,25 @@ async function processMessage(
   // listens to only one trigger runs only when that trigger matches.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
-  for (const triggerType of automationTriggers) {
-    runAutomationsForTrigger({
-      accountId,
-      triggerType,
-      contactId: contactRecord.id,
-      context: {
-        message_text: inboundText,
-        conversation_id: conversation.id,
-      },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
-  }
+  // Await the dispatches (in parallel) instead of fire-and-forget. On
+  // Vercel serverless an un-awaited promise here is cut off when
+  // `processWebhook` returns and the wrapping `after()` resolves, so
+  // inbound automations would fire only intermittently. The ack to Meta
+  // already went out before `after()` ran, so awaiting costs no webhook
+  // latency.
+  await Promise.all(
+    automationTriggers.map((triggerType) =>
+      runAutomationsForTrigger({
+        accountId,
+        triggerType,
+        contactId: contactRecord.id,
+        context: {
+          message_text: inboundText,
+          conversation_id: conversation.id,
+        },
+      }).catch((err) => console.error('[automations] dispatch failed:', err)),
+    ),
+  )
 }
 
 async function parseMessageContent(
