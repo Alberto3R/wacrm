@@ -115,7 +115,8 @@ export async function POST(request: Request) {
         account_id: accountId,
         user_id: ownerId,
         phone: phoneRaw,
-        phone_normalized: phone,
+        // phone_normalized é coluna GERADA (regexp_replace(phone,'\D','')) —
+        // o Postgres calcula sozinho; inserir valor nela dá erro.
         name,
         email: str(a.email),
         company: str(a.empresa) ?? str(a.segmento),
