@@ -52,6 +52,21 @@ interface WhatsAppMessage {
   }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  /**
+   * Present on the FIRST message of a conversation started from a
+   * Click-to-WhatsApp (CTWA) ad. `ctwa_clid` is Meta's click id — the
+   * key to attributing this lead back to the ad and to firing the
+   * Conversions API event later.
+   */
+  referral?: {
+    source_url?: string
+    source_id?: string
+    source_type?: string
+    headline?: string
+    body?: string
+    media_type?: string
+    ctwa_clid?: string
+  }
 }
 
 interface WhatsAppWebhookEntry {
@@ -653,6 +668,31 @@ async function processMessage(
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+
+  // CTWA (Fase 2): lead que chegou por um anúncio Click-to-WhatsApp.
+  // A Meta injeta `referral.ctwa_clid` na primeira mensagem — gravamos
+  // na atribuição pra ligar o lead ao anúncio (e, na Fase 3, devolver a
+  // conversão à Meta). Idempotente por (contato, ctwa_clid).
+  const ref = message.referral
+  if (ref?.ctwa_clid) {
+    const { data: dup } = await supabaseAdmin()
+      .from('lead_attribution')
+      .select('id')
+      .eq('contact_id', contactRecord.id)
+      .eq('ctwa_clid', ref.ctwa_clid)
+      .maybeSingle()
+    if (!dup) {
+      await supabaseAdmin().from('lead_attribution').insert({
+        account_id: accountId,
+        contact_id: contactRecord.id,
+        source: 'ctwa',
+        ctwa_clid: ref.ctwa_clid,
+        ad_id: ref.source_id ?? null,
+        landing_url: ref.source_url ?? null,
+        raw: ref,
+      })
+    }
+  }
 
   // ============================================================
   // Flow runner dispatch.
