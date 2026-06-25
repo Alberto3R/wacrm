@@ -1,4 +1,5 @@
 import {
+  Bot,
   Coins,
   FileText,
   KeyRound,
@@ -29,6 +30,7 @@ export const SETTINGS_SECTIONS = [
   'templates',
   'fields',
   'deals',
+  'ai-agent',
   'members',
   'api',
 ] as const;
@@ -54,6 +56,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   templates: { id: 'templates', label: 'Modelos', icon: FileText, group: 'workspace' },
   fields: { id: 'fields', label: 'Campos e tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Negócios e moeda', icon: Coins, group: 'workspace' },
+  'ai-agent': { id: 'ai-agent', label: 'Agente IA', icon: Bot, group: 'workspace' },
   members: { id: 'members', label: 'Membros da equipe', icon: UsersRound, group: 'workspace' },
   api: { id: 'api', label: 'Chaves de API', icon: KeyRound, group: 'workspace' },
 };

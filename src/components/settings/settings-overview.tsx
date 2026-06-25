@@ -217,6 +217,11 @@ export function SettingsOverview({
       loading: false,
       subtitle: `Modo ${cap(mode)} · destaque ${themeName}`,
     },
+    {
+      section: 'ai-agent',
+      loading: false,
+      subtitle: 'Persona e respostas automáticas',
+    },
   ];
 
   return (

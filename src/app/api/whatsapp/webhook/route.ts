@@ -7,6 +7,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { maybeRunAgent } from '@/lib/ai-agent/handle'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -288,7 +289,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // inserts that need it for NOT NULL FK compliance. Always
           // the admin who saved the WhatsApp config.
           config.user_id,
-          decryptedAccessToken
+          decryptedAccessToken,
+          phoneNumberId
         )
       }
     }
@@ -522,7 +524,10 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
-  accessToken: string
+  accessToken: string,
+  // The brand's own number id — needed so the AI agent can send its
+  // reply back out through the same line.
+  phoneNumberId: string
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -734,6 +739,21 @@ async function processMessage(
       }).catch((err) => console.error('[automations] dispatch failed:', err)),
     ),
   )
+
+  // Agente de IA — responde quando habilitado e nenhum flow consumiu a
+  // mensagem (flows têm prioridade). Awaited: estamos dentro do after(),
+  // então a função fica viva até o envio terminar.
+  if (!flowConsumed) {
+    await maybeRunAgent({
+      supabase: supabaseAdmin(),
+      accountId,
+      conversationId: conversation.id,
+      contactWaId: contact.wa_id,
+      phoneNumberId,
+      accessToken,
+      inboundText,
+    })
+  }
 }
 
 async function parseMessageContent(
