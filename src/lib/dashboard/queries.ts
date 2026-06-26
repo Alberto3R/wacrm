@@ -27,6 +27,38 @@ import type {
 
 type DB = SupabaseClient
 
+// --- Funil & Performance (RPC dashboard_funnel_metrics) ----------------
+
+export interface FunnelMetrics {
+  total_deals: number
+  with_conn_stage: number
+  reached_conn: number
+  won: number
+  won_from_conn: number
+  lost: number
+  avg_cycle_seconds: number | null
+  loss_reasons: { reason: string; count: number }[]
+  no_human_followup: number
+}
+
+const EMPTY_FUNNEL: FunnelMetrics = {
+  total_deals: 0,
+  with_conn_stage: 0,
+  reached_conn: 0,
+  won: 0,
+  won_from_conn: 0,
+  lost: 0,
+  avg_cycle_seconds: null,
+  loss_reasons: [],
+  no_human_followup: 0,
+}
+
+export async function loadFunnelMetrics(db: DB): Promise<FunnelMetrics> {
+  const { data, error } = await db.rpc('dashboard_funnel_metrics')
+  if (error || !data) return EMPTY_FUNNEL
+  return data as FunnelMetrics
+}
+
 // --- 1. Metric cards ---------------------------------------------------
 
 export async function loadMetrics(db: DB): Promise<MetricsBundle> {

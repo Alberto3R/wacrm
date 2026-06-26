@@ -43,6 +43,18 @@ interface DealFormProps {
   onSaved: () => void;
 }
 
+// Lista padrão (universal) de motivos de perda — sugestão do CRM.
+const LOSS_REASONS = [
+  "Preço / orçamento",
+  "Sem fit (não é o perfil)",
+  "Sumiu / parou de responder",
+  "Escolheu concorrente",
+  "Sem urgência (timing)",
+  "Não era o decisor",
+  "Sem necessidade no momento",
+  "Outro",
+];
+
 export function DealForm({
   open,
   onOpenChange,
@@ -73,6 +85,8 @@ export function DealForm({
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [lostReasonOpen, setLostReasonOpen] = useState(false);
+  const [lostReason, setLostReason] = useState(LOSS_REASONS[0]);
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
@@ -81,6 +95,7 @@ export function DealForm({
   useEffect(() => {
     if (!open) return;
     setConfirmDelete(false);
+    setLostReasonOpen(false);
     if (deal) {
       setTitle(deal.title);
       setValue(String(deal.value ?? ""));
@@ -209,12 +224,14 @@ export function DealForm({
     onSaved();
   }
 
-  async function handleStatusChange(status: DealStatus) {
+  async function handleStatusChange(status: DealStatus, reason?: string) {
     if (!deal) return;
     setStatusAction(status);
+    const patch: { status: DealStatus; lost_reason?: string | null } = { status };
+    if (status === "lost") patch.lost_reason = reason?.trim() || null;
     const { error } = await supabase
       .from("deals")
-      .update({ status })
+      .update(patch)
       .eq("id", deal.id);
     setStatusAction(null);
     if (error) {
@@ -397,7 +414,7 @@ export function DealForm({
                   </Button>
                   <Button
                     type="button"
-                    onClick={() => handleStatusChange("lost")}
+                    onClick={() => setLostReasonOpen((v) => !v)}
                     disabled={!!statusAction || deal.status === "lost"}
                     className="flex-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
                   >
@@ -411,6 +428,45 @@ export function DealForm({
                     )}
                   </Button>
                 </div>
+
+                {lostReasonOpen && deal.status !== "lost" && (
+                  <div className="space-y-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2">
+                    <p className="text-xs text-muted-foreground">Motivo da perda</p>
+                    <select
+                      value={lostReason}
+                      onChange={(e) => setLostReason(e.target.value)}
+                      className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
+                    >
+                      {LOSS_REASONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => handleStatusChange("lost", lostReason)}
+                        disabled={!!statusAction}
+                        className="flex-1 bg-red-600 text-white hover:bg-red-700"
+                      >
+                        {statusAction === "lost" ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Confirmar perda"
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setLostReasonOpen(false)}
+                        className="text-muted-foreground"
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {deal.status && deal.status !== "open" && (
                   <Button
                     type="button"

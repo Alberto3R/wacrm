@@ -17,6 +17,7 @@ import {
   loadMetrics,
   loadPipelineDonut,
   loadResponseTime,
+  loadFunnelMetrics,
 } from '@/lib/dashboard/queries'
 import type {
   ActivityItem,
@@ -33,6 +34,8 @@ import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { FunnelPerformance } from '@/components/dashboard/funnel-performance'
+import type { FunnelMetrics } from '@/lib/dashboard/queries'
 
 type RangeDays = 7 | 30 | 90
 
@@ -57,6 +60,9 @@ export default function DashboardPage() {
 
   const [responseTime, setResponseTime] = useState<ResponseTimeSummary | null>(null)
   const [responseTimeLoading, setResponseTimeLoading] = useState(true)
+
+  const [funnel, setFunnel] = useState<FunnelMetrics | null>(null)
+  const [funnelLoading, setFunnelLoading] = useState(true)
 
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
@@ -86,6 +92,11 @@ export default function DashboardPage() {
       .then((r) => setResponseTime(r))
       .catch((err) => console.error('[dashboard] response time failed:', err))
       .finally(() => setResponseTimeLoading(false))
+
+    void loadFunnelMetrics(db)
+      .then((f) => setFunnel(f))
+      .catch((err) => console.error('[dashboard] funnel failed:', err))
+      .finally(() => setFunnelLoading(false))
 
     // Fetch up to 50 so the biggest page-size option in the feed
     // (50 rows) is already in memory — switching sizes then becomes
@@ -178,6 +189,9 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {/* Funil & Performance */}
+      <FunnelPerformance funnel={funnel} responseTime={responseTime} loading={funnelLoading} />
 
       {/* Quick actions */}
       <QuickActions />
