@@ -181,7 +181,43 @@ export async function POST(
     return NextResponse.json({ ok: true, action: 'refund', contact_id: contactId }, { status: 200 })
   }
 
-  // Venda/abandono: abre o negócio na etapa mapeada
+  // Venda/abandono. A Voomp dispara por produto, então a mesma pessoa pode
+  // gerar vários eventos (abandonou → comprou). Mantemos UM negócio aberto
+  // por contato no funil e só AVANÇAMOS de etapa (nunca puxamos pra trás —
+  // nem por evento, nem desfazendo um avanço manual do time).
+  const { data: targetStage } = await db
+    .from('pipeline_stages').select('position').eq('id', target).maybeSingle()
+
+  const { data: openDeal } = await db
+    .from('deals')
+    .select('id, stage_id')
+    .eq('account_id', cfg.account_id)
+    .eq('pipeline_id', cfg.pipeline_id)
+    .eq('contact_id', contactId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (openDeal) {
+    let advanced = false
+    if (targetStage) {
+      const { data: curStage } = await db
+        .from('pipeline_stages').select('position').eq('id', openDeal.stage_id).maybeSingle()
+      if (curStage && targetStage.position > curStage.position) {
+        await db
+          .from('deals')
+          .update({ stage_id: target, updated_at: new Date().toISOString() })
+          .eq('id', openDeal.id)
+        advanced = true
+      }
+    }
+    return NextResponse.json(
+      { ok: true, action: trigger, contact_id: contactId, deal_id: openDeal.id, advanced, tag: productTag },
+      { status: 200 },
+    )
+  }
+
   const amount =
     typeof sale.amount === 'number'
       ? sale.amount
@@ -205,7 +241,7 @@ export async function POST(
     .single()
 
   return NextResponse.json(
-    { ok: true, action: trigger, contact_id: contactId, deal_id: deal?.id ?? null, tag: productTag },
+    { ok: true, action: trigger, contact_id: contactId, deal_id: deal?.id ?? null, created: true, tag: productTag },
     { status: 200 },
   )
 }
