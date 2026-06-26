@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { fireWebLead } from '@/lib/conversions/capi'
+import { notifyTeamNewLead } from '@/lib/notifications/lead-alert'
 
 // ============================================================
 // POST /api/leads — captação de lead da landing (Funil 2) direto no CRM
@@ -195,8 +196,27 @@ export async function POST(request: Request) {
     email: str(a.email),
   }).catch(() => ({ ok: false, reason: 'threw' }))
 
+  // 8. Alerta interno pro time (substitui o "ping" do Make) — só pra leads
+  //    que valem atenção humana: verde (qualificado) e amarelo (avaliação).
+  //    Off-gate/vermelho não dispara. Await pra não morrer no serverless.
+  let alerted = false
+  if (status === 'verde' || status === 'amarelo') {
+    const alert = await notifyTeamNewLead({
+      supabase: db,
+      accountId,
+      nome: name,
+      whatsapp: phoneRaw,
+      status,
+      origem: str(a.origem),
+      faturamento: str(a.faturamento),
+      awareness: str(a.awareness) ?? str(a.consciencia),
+      angulo: str(a.angulo) ?? str(a.ang),
+    }).catch(() => ({ ok: false, reason: 'threw' }))
+    alerted = alert.ok
+  }
+
   return NextResponse.json(
-    { data: { contact_id: contactId, deal_id: dealId, capi: capi.ok } },
+    { data: { contact_id: contactId, deal_id: dealId, capi: capi.ok, alerted } },
     { status: 200 },
   )
 }
