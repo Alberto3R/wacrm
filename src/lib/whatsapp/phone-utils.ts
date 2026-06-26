@@ -41,6 +41,22 @@ export function isValidE164(phone: string): boolean {
 }
 
 /**
+ * Detect a WhatsApp Business-Scoped User ID (BSUID).
+ *
+ * Com o lançamento dos usernames do WhatsApp (obrigatório ~jun/2026), o
+ * remetente pode chegar identificado por um BSUID em vez do telefone —
+ * formato: prefixo de país de 2 letras + ponto + alfanumérico
+ * (ex.: "BR.13491208655302741918", "US.1349..."). Telefones são só
+ * dígitos, então o ponto + letras distingue com segurança. O BSUID é
+ * aceito no campo `to` de envio igual a um telefone (exceto templates de
+ * autenticação, que exigem telefone — erro 131062).
+ */
+export function isBsuid(id: string | null | undefined): boolean {
+  if (!id) return false
+  return /^[A-Za-z]{2}\.[A-Za-z0-9_-]{4,128}$/.test(id)
+}
+
+/**
  * Generate plausible phone number variants for retry when Meta's
  * sandbox rejects a number with error #131030 ("not in allowed list").
  *

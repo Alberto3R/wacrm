@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone, isBsuid } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
@@ -544,15 +544,33 @@ async function processMessage(
   // reply back out through the same line.
   phoneNumberId: string
 ) {
-  const senderPhone = normalizePhone(message.from)
+  // Fase 4 (BSUID): com WhatsApp usernames, o remetente pode chegar
+  // identificado por um BSUID ("BR.13491208…") em vez do telefone. Olhamos
+  // tanto o `from` quanto o `wa_id` do contato: o que for BSUID vira o
+  // identificador de username; o que for dígitos vira o telefone.
+  const idCandidates = [message.from, contact.wa_id].filter(Boolean) as string[]
+  const senderBsuid = idCandidates.find(isBsuid) ?? null
+  const phoneCandidate = idCandidates.find((c) => !isBsuid(c))
+  // Sem telefone (lead só com username): usamos o próprio BSUID como
+  // identificador no campo phone — a Meta aceita BSUID no `to` de envio.
+  const senderPhone = phoneCandidate
+    ? normalizePhone(phoneCandidate)
+    : (senderBsuid ?? normalizePhone(message.from))
   const contactName = contact.profile.name
+
+  if (senderBsuid) {
+    // Loga o payload cru pra confirmarmos a estrutura nativa real do
+    // webhook com BSUID (a doc da Meta não detalha o mapeamento de campos).
+    console.log('[bsuid] inbound', JSON.stringify({ from: message.from, contact }))
+  }
 
   // Find or create contact
   const contactOutcome = await findOrCreateContact(
     accountId,
     configOwnerUserId,
     senderPhone,
-    contactName
+    contactName,
+    senderBsuid
   )
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
@@ -955,8 +973,30 @@ async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
-  name: string
+  name: string,
+  // Fase 4 (BSUID): quando o lead veio identificado por username, dedup é
+  // exato pelo wa_user_id — o sufixo de telefone não serve.
+  bsuid: string | null = null
 ): Promise<ContactOutcome | null> {
+  // BSUID conhecido: tenta casar pelo identificador exato primeiro.
+  if (bsuid) {
+    const { data: byBsuid } = await supabaseAdmin()
+      .from('contacts')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('wa_user_id', bsuid)
+      .maybeSingle()
+    if (byBsuid) {
+      if (name && name !== byBsuid.name) {
+        await supabaseAdmin()
+          .from('contacts')
+          .update({ name, updated_at: new Date().toISOString() })
+          .eq('id', byBsuid.id)
+      }
+      return { contact: byBsuid, wasCreated: false }
+    }
+  }
+
   // Find an existing contact for this account by phone. The shared
   // helper pre-filters in SQL by the last-8-digit suffix (so we don't
   // pull every contact on every inbound message) then applies the
@@ -970,11 +1010,16 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
+    const patch: Record<string, unknown> = {}
     // Update name if it changed
-    if (name && name !== existingContact.name) {
+    if (name && name !== existingContact.name) patch.name = name
+    // Liga o BSUID a um contato já conhecido pelo telefone (par username↔fone).
+    if (bsuid && !existingContact.wa_user_id) patch.wa_user_id = bsuid
+    if (Object.keys(patch).length > 0) {
+      patch.updated_at = new Date().toISOString()
       await supabaseAdmin()
         .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
+        .update(patch)
         .eq('id', existingContact.id)
     }
     return { contact: existingContact, wasCreated: false }
@@ -991,6 +1036,7 @@ async function findOrCreateContact(
       user_id: configOwnerUserId,
       phone,
       name: name || phone,
+      wa_user_id: bsuid,
     })
     .select()
     .single()
