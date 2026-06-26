@@ -10,6 +10,7 @@ import {
   Tags,
   User,
   UsersRound,
+  Webhook,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ export const SETTINGS_SECTIONS = [
   'fields',
   'deals',
   'ai-agent',
+  'webhooks',
   'members',
   'api',
 ] as const;
@@ -57,6 +59,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   fields: { id: 'fields', label: 'Campos e tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Negócios e moeda', icon: Coins, group: 'workspace' },
   'ai-agent': { id: 'ai-agent', label: 'Agente IA', icon: Bot, group: 'workspace' },
+  webhooks: { id: 'webhooks', label: 'Webhooks', icon: Webhook, group: 'workspace' },
   members: { id: 'members', label: 'Membros da equipe', icon: UsersRound, group: 'workspace' },
   api: { id: 'api', label: 'Chaves de API', icon: KeyRound, group: 'workspace' },
 };
