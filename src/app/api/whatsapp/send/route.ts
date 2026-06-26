@@ -388,13 +388,17 @@ export async function POST(request: Request) {
       )
     }
 
-    // Update conversation
+    // Update conversation. Um humano respondendo manualmente é o sinal mais
+    // forte de "assumi o atendimento" — então pausamos a IA nativa nesta
+    // conversa (mesmo efeito do botão "Assumir atendimento"). O operador
+    // reativa pelo botão "Reativar IA" quando quiser devolver pro agente.
     await supabase
       .from('conversations')
       .update({
         last_message_text: content_text || `[${message_type}]`,
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        ai_handoff: true,
       })
       .eq('id', conversation_id)
 
