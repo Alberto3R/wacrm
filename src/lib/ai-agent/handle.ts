@@ -161,7 +161,18 @@ export async function maybeRunAgent(params: {
     history,
     incomingText: inboundText,
   })
-  if (!result || !result.reply.trim()) return
+  if (!result || !result.reply.trim()) {
+    // Falha da IA (erro de API, parse inválido ou resposta vazia): em vez
+    // de deixar o lead no silêncio, escalamos pra humano — pausa a IA e
+    // marca a conversa como pendente. A mensagem do cliente já está no
+    // inbox, então fica visível aguardando atendimento manual.
+    await supabase
+      .from('conversations')
+      .update({ ai_handoff: true, status: 'pending', updated_at: new Date().toISOString() })
+      .eq('id', conversationId)
+    console.error('[ai-agent] sem resposta da IA — conversa', conversationId, 'escalada pra humano')
+    return
+  }
 
   // 6. Envia a resposta — quebrada em mensagens curtas (ritmo de WhatsApp),
   // cada balão gravado como mensagem do bot.

@@ -26,6 +26,36 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
+  // Auto-recupera de chunks obsoletos após um deploy. Quando uma versão
+  // nova sobe, os nomes dos chunks antigos passam a dar 404; uma navegação
+  // client-side pra uma rota ainda-não-carregada falha em silêncio ("não
+  // carrega nada"). Detectamos esse erro e recarregamos a página uma vez
+  // pra puxar o build novo. O guard em sessionStorage evita loop de reload.
+  useEffect(() => {
+    const onChunkError = (e: Event) => {
+      const msg =
+        (e as ErrorEvent)?.message ||
+        (e as PromiseRejectionEvent)?.reason?.message ||
+        "";
+      if (
+        /ChunkLoadError|Loading chunk [\d]+ failed|dynamically imported module|importing a module script failed/i.test(
+          msg,
+        )
+      ) {
+        if (!sessionStorage.getItem("__chunk_reload__")) {
+          sessionStorage.setItem("__chunk_reload__", "1");
+          window.location.reload();
+        }
+      }
+    };
+    window.addEventListener("error", onChunkError);
+    window.addEventListener("unhandledrejection", onChunkError);
+    return () => {
+      window.removeEventListener("error", onChunkError);
+      window.removeEventListener("unhandledrejection", onChunkError);
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
