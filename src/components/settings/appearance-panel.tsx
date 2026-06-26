@@ -3,6 +3,8 @@
 import { Check, Moon, Palette, SunMoon, Sun } from "lucide-react";
 
 import { useTheme } from "@/hooks/use-theme";
+import { useAuth } from "@/hooks/use-auth";
+import { createClient } from "@/lib/supabase/client";
 import { MODES, THEMES, type Mode, type ThemeId } from "@/lib/themes";
 import { cn } from "@/lib/utils";
 import { SettingsPanelHead } from "./settings-panel-head";
@@ -21,11 +23,30 @@ import { SettingsPanelHead } from "./settings-panel-head";
  */
 export function AppearancePanel() {
   const { theme, setTheme, mode, setMode } = useTheme();
+  const { accountId, account, canEditSettings } = useAuth();
+  const supabase = createClient();
+
+  // A cor de destaque é por MARCA (accounts.accent). Aplica na hora e
+  // persiste na conta ativa — todos que acessam a marca passam a ver essa
+  // cor. Mudar numa marca NÃO afeta as outras. Só admins podem alterar;
+  // pros demais o seletor fica somente-leitura.
+  const applyAccent = async (id: ThemeId) => {
+    if (!canEditSettings) return;
+    setTheme(id);
+    if (accountId) {
+      const { error } = await supabase
+        .from("accounts")
+        .update({ accent: id })
+        .eq("id", accountId);
+      if (error) console.error("[appearance] salvar accent:", error.message);
+    }
+  };
+
   return (
     <section className="max-w-3xl animate-in fade-in-50 duration-200">
       <SettingsPanelHead
         title="Aparência"
-        description="Defina o modo e a cor de destaque usados no aplicativo. Salvo neste dispositivo — experimente, a mudança é ao vivo."
+        description="O modo claro/escuro é salvo neste dispositivo. A cor de destaque vale para a marca toda — quem acessa a mesma marca vê a mesma cor."
       />
 
       <div className="space-y-4">
@@ -53,8 +74,14 @@ export function AppearancePanel() {
       <div className="mt-8 space-y-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Palette className="size-4 text-muted-foreground" />
-          Cor de destaque
+          Cor de destaque{account?.name ? ` — ${account.name}` : ""}
         </h3>
+
+        {!canEditSettings && (
+          <p className="text-xs text-muted-foreground">
+            Só administradores da marca podem alterar a cor.
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {THEMES.map((t) => (
@@ -65,7 +92,8 @@ export function AppearancePanel() {
               tagline={t.tagline}
               swatch={t.swatch}
               isActive={t.id === theme}
-              onPick={() => setTheme(t.id)}
+              disabled={!canEditSettings}
+              onPick={() => applyAccent(t.id)}
             />
           ))}
         </div>
@@ -124,6 +152,7 @@ function ThemeCard({
   tagline,
   swatch,
   isActive,
+  disabled,
   onPick,
 }: {
   id: ThemeId;
@@ -131,12 +160,14 @@ function ThemeCard({
   tagline: string;
   swatch: string;
   isActive: boolean;
+  disabled?: boolean;
   onPick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onPick}
+      disabled={disabled}
       aria-pressed={isActive}
       aria-label={`Usar tema ${name}`}
       className={cn(
@@ -144,6 +175,7 @@ function ThemeCard({
         isActive
           ? "border-primary/60 ring-2 ring-primary/40"
           : "border-border hover:border-border hover:bg-muted/40",
+        disabled && "cursor-not-allowed opacity-60 hover:border-border hover:bg-card",
       )}
     >
       <div className="flex items-center justify-between">
