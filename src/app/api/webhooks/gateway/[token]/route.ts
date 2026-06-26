@@ -126,7 +126,7 @@ export async function POST(
 
   // owner da conta (preenche os user_id NOT NULL)
   const { data: acc } = await db
-    .from('accounts').select('owner_user_id').eq('id', cfg.account_id).maybeSingle()
+    .from('accounts').select('owner_user_id, default_currency').eq('id', cfg.account_id).maybeSingle()
   const ownerId = acc?.owner_user_id
   if (!ownerId) return ack('account_owner_missing')
 
@@ -235,6 +235,7 @@ export async function POST(
       title: `${productTag ?? 'Low Ticket'} — ${name}`,
       status: 'open',
       value: amount,
+      currency: acc?.default_currency ?? 'BRL',
       notes: `Gateway ${cfg.provider} · pedido ${orderId} · ${trigger}${str(sale.method) ? ` · ${sale.method}` : ''}`,
     })
     .select('id')

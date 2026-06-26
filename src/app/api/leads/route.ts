@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
   // 3. Owner da conta (user_id NOT NULL nos inserts) + pipeline + estágio
   const [{ data: acc }, { data: pipeline }] = await Promise.all([
-    db.from('accounts').select('owner_user_id').eq('id', accountId).maybeSingle(),
+    db.from('accounts').select('owner_user_id, default_currency').eq('id', accountId).maybeSingle(),
     db
       .from('pipelines')
       .select('id')
@@ -153,6 +153,7 @@ export async function POST(request: Request) {
       contact_id: contactId,
       title: `${name} — Tráfego pago${status ? ` (${status})` : ''}`,
       status: 'open',
+      currency: (acc as { default_currency?: string } | null)?.default_currency ?? 'BRL',
       notes: str(a.segmento) || str(a.faturamento) ? `Segmento: ${str(a.segmento) ?? '—'} · Faturamento: ${str(a.faturamento) ?? '—'}` : null,
     })
     .select('id')
