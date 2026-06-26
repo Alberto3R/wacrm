@@ -80,7 +80,11 @@ export function WebhooksSettings() {
     load();
   }, [load]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // Domínio canônico do CRM (NEXT_PUBLIC_SITE_URL = https://vendas.sales3r.com.br)
+  // pra a URL do webhook sair sempre na marca, não no host que o admin abriu.
+  const origin =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+    (typeof window !== "undefined" ? window.location.origin : "");
   const urlFor = (token: string) => `${origin}/api/webhooks/gateway/${token}`;
 
   function startNew() {
