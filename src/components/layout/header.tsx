@@ -25,6 +25,7 @@ const pageTitles: Record<string, string> = {
   "/pipelines": "Funis",
   "/broadcasts": "Disparos",
   "/automations": "Automações",
+  "/flows": "Fluxos",
   "/settings": "Configurações",
 };
 
@@ -89,7 +90,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             </AvatarFallback>
           </Avatar>
           <span className="hidden text-sm font-medium text-foreground sm:inline">
-            {profile?.full_name ?? "User"}
+            {profile?.full_name ?? "Usuário"}
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -99,7 +100,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <div className="px-2 py-1.5">
             <p className="truncate text-sm font-medium text-foreground">
-              {profile?.full_name ?? "User"}
+              {profile?.full_name ?? "Usuário"}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {profile?.email ?? ""}
