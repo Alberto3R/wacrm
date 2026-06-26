@@ -14,6 +14,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { LeadAttributionPanel } from './lead-attribution-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -417,7 +418,18 @@ export function ContactDetailView({
                 >
                   Negócios
                 </TabsTrigger>
+                <TabsTrigger
+                  value="origem"
+                  className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                >
+                  Origem
+                </TabsTrigger>
               </TabsList>
+
+              {/* Origem / atribuição do lead */}
+              <TabsContent value="origem" className="flex-1 overflow-y-auto px-4 py-3">
+                {contactId && <LeadAttributionPanel contactId={contactId} />}
+              </TabsContent>
 
               {/* Details Tab */}
               <TabsContent value="details" className="flex-1 overflow-y-auto px-4 py-3">

@@ -10,6 +10,7 @@ import { AccountSwitcher } from "./account-switcher";
 import {
   Crown,
   GitBranch,
+  BarChart3,
   LayoutDashboard,
   LogOut,
   MessageSquare,
@@ -92,6 +93,7 @@ const navItems: NavItem[] = [
   { href: "/inbox", label: "Conversas", icon: MessageSquare },
   { href: "/contacts", label: "Contatos", icon: Users },
   { href: "/pipelines", label: "Funis", icon: GitBranch },
+  { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { href: "/broadcasts", label: "Disparos", icon: Radio },
   { href: "/automations", label: "Automações", icon: Zap },
   { href: "/flows", label: "Fluxos", icon: Workflow, beta: true },
