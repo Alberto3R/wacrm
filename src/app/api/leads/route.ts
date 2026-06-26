@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { fireWebLead } from '@/lib/conversions/capi'
 
 // ============================================================
 // POST /api/leads — captação de lead da landing (Funil 2) direto no CRM
@@ -178,8 +179,24 @@ export async function POST(request: Request) {
     raw: a,
   })
 
+  // 7. CAPI "Lead" server-side (dedup com o pixel do navegador via event_id).
+  //    Substitui o disparo que o cenário do Make fazia no Funil 2. Await pra
+  //    garantir o envio antes da função serverless congelar; nunca derruba a
+  //    resposta (fireWebLead trata os próprios erros).
+  const capi = await fireWebLead({
+    supabase: db,
+    accountId,
+    eventId: str(a.event_id),
+    eventSourceUrl: str(a.event_source_url),
+    fbc: str(a.fbc),
+    fbp: str(a.fbp),
+    fbclid: str(a.fbclid),
+    phone,
+    email: str(a.email),
+  }).catch(() => ({ ok: false, reason: 'threw' }))
+
   return NextResponse.json(
-    { data: { contact_id: contactId, deal_id: dealId } },
+    { data: { contact_id: contactId, deal_id: dealId, capi: capi.ok } },
     { status: 200 },
   )
 }
