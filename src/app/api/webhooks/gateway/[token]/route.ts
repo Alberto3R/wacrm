@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { decrypt } from '@/lib/whatsapp/encryption'
 
 // ============================================================
 // POST /api/webhooks/gateway/[token] — webhook de gateway (Voomp etc.)
@@ -36,6 +37,7 @@ const ack = (reason: string, extra: Record<string, unknown> = {}) =>
   NextResponse.json({ ok: false, reason, ...extra }, { status: 200 })
 
 const DEFAULT_TAG_COLOR = '#A6E43C'
+const GRAPH = 'https://graph.facebook.com/v22.0'
 
 // find-or-create de tag (por nome, na conta) + vínculo no contato
 async function tagContact(
@@ -80,6 +82,66 @@ async function tagContact(
   await db.from('contact_tags').insert({ contact_id: contactId, tag_id: tagId })
 }
 
+// Dispara o template aprovado de recuperação (ex.: eqv_pix_pendente) pro
+// lead com PIX pendente. Convenção do template: corpo {{1}} = primeiro nome;
+// botão URL {{1}} = id do produto (link de finalizar o pagamento). O agente
+// da conta assume quando a pessoa responde.
+async function sendRecoveryTemplate(p: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any
+  accountId: string
+  phoneRaw: string
+  name: string
+  productId: string | null
+  templateName: string
+}): Promise<{ ok: boolean; reason?: string }> {
+  const to = p.phoneRaw.replace(/\D/g, '')
+  if (!to) return { ok: false, reason: 'no_phone' }
+  const { data: wa } = await p.db
+    .from('whatsapp_config')
+    .select('phone_number_id, access_token')
+    .eq('account_id', p.accountId)
+    .maybeSingle()
+  if (!wa?.phone_number_id || !wa.access_token) return { ok: false, reason: 'whatsapp_not_configured' }
+  let token: string
+  try {
+    token = decrypt(wa.access_token)
+  } catch {
+    return { ok: false, reason: 'token_decrypt_failed' }
+  }
+  const firstName = (p.name || 'tudo bem').trim().split(/\s+/)[0]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const components: any[] = [{ type: 'body', parameters: [{ type: 'text', text: firstName }] }]
+  if (p.productId) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: p.productId }],
+    })
+  }
+  try {
+    const res = await fetch(`${GRAPH}/${wa.phone_number_id}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'template',
+        template: { name: p.templateName, language: { code: 'pt_BR' }, components },
+      }),
+    })
+    if (!res.ok) {
+      console.error('[recovery] erro Meta', res.status, await res.text())
+      return { ok: false, reason: `meta_${res.status}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    console.error('[recovery] fetch falhou', e)
+    return { ok: false, reason: 'fetch_failed' }
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
@@ -103,25 +165,32 @@ export async function POST(
     return ack('bad_json')
   }
 
-  const trigger = str(body?.trigger) ?? str(body?.event) ?? 'unknown'
   const sale = body?.sale ?? {}
   const product = body?.product ?? {}
   const client = body?.client ?? {}
   const orderId = str(sale.id) ?? str(body?.id) ?? ''
+  const currentStatus = str(body?.currentStatus) ?? str(sale.status) ?? null
 
-  // Idempotência: 1 processamento por (config, pedido, trigger).
+  // A Voomp manda event=saleUpdated + currentStatus na mudança de status (e
+  // um `trigger` em alguns webhooks). Tentamos trigger e currentStatus — o
+  // que estiver no mapa vence (ex.: salePaid OU waiting_payment).
+  const stageMap = (cfg.stage_map ?? {}) as Record<string, string>
+  const candidates = [str(body?.trigger), currentStatus, str(body?.event)].filter(
+    Boolean,
+  ) as string[]
+  const eventKey = candidates.find((k) => k in stageMap) ?? 'unknown'
+  const target = stageMap[eventKey]
+  if (!target) {
+    console.log('[gateway] evento sem mapeamento:', candidates, '— config', cfg.id)
+    return ack('unmapped_trigger', { candidates })
+  }
+
+  // Idempotência: 1 processamento por (config, pedido, evento resolvido).
   if (orderId) {
     const { error: dupErr } = await db
       .from('gateway_events')
-      .insert({ config_id: cfg.id, order_id: orderId, trigger })
+      .insert({ config_id: cfg.id, order_id: orderId, trigger: eventKey })
     if (dupErr && isUnique(dupErr)) return ack('duplicate', { order_id: orderId })
-  }
-
-  const stageMap = (cfg.stage_map ?? {}) as Record<string, string>
-  const target = stageMap[trigger]
-  if (!target) {
-    console.log('[gateway] trigger sem mapeamento:', trigger, '— config', cfg.id)
-    return ack('unmapped_trigger', { trigger })
   }
 
   // owner da conta (preenche os user_id NOT NULL)
@@ -169,6 +238,21 @@ export async function POST(
   const productTag = str(product.name)
   await tagContact(db, cfg.account_id, ownerId, contactId, productTag)
 
+  // Recuperação de venda (PIX pendente): tag "Recuperação" + dispara o
+  // template aprovado; o agente da conta assume quando a pessoa responde.
+  const isRecovery = currentStatus === 'waiting_payment' || /waiting|pix|pend/i.test(eventKey)
+  if (isRecovery && cfg.recovery_template) {
+    await tagContact(db, cfg.account_id, ownerId, contactId, 'Recuperação')
+    await sendRecoveryTemplate({
+      db,
+      accountId: cfg.account_id,
+      phoneRaw,
+      name,
+      productId: str(product.id),
+      templateName: cfg.recovery_template,
+    }).catch((e) => console.error('[gateway] recovery send falhou', e))
+  }
+
   // REFUND/revoga: marca o negócio desse contato no funil como perdido + tag
   if (target === 'refund') {
     await db
@@ -213,7 +297,7 @@ export async function POST(
       }
     }
     return NextResponse.json(
-      { ok: true, action: trigger, contact_id: contactId, deal_id: openDeal.id, advanced, tag: productTag },
+      { ok: true, action: eventKey, contact_id: contactId, deal_id: openDeal.id, advanced, tag: productTag },
       { status: 200 },
     )
   }
@@ -236,13 +320,13 @@ export async function POST(
       status: 'open',
       value: amount,
       currency: acc?.default_currency ?? 'BRL',
-      notes: `Gateway ${cfg.provider} · pedido ${orderId} · ${trigger}${str(sale.method) ? ` · ${sale.method}` : ''}`,
+      notes: `Gateway ${cfg.provider} · pedido ${orderId} · ${eventKey}${str(sale.method) ? ` · ${sale.method}` : ''}`,
     })
     .select('id')
     .single()
 
   return NextResponse.json(
-    { ok: true, action: trigger, contact_id: contactId, deal_id: deal?.id ?? null, created: true, tag: productTag },
+    { ok: true, action: eventKey, contact_id: contactId, deal_id: deal?.id ?? null, created: true, tag: productTag },
     { status: 200 },
   )
 }
