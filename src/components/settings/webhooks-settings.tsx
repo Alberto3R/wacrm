@@ -41,6 +41,7 @@ interface Cfg {
   pipeline_id: string | null;
   stage_map: Record<string, string>;
   enabled: boolean;
+  recovery_template: string | null;
 }
 
 function newToken() {
@@ -96,6 +97,7 @@ export function WebhooksSettings() {
       pipeline_id: pipelines[0]?.id ?? null,
       stage_map: {},
       enabled: true,
+      recovery_template: "",
     });
   }
 
@@ -103,18 +105,25 @@ export function WebhooksSettings() {
   const map = editing?.stage_map ?? {};
   const compra = map.salePaid ?? "";
   const abandono = map.checkoutAbandoned ?? "";
+  const recuperacao = map.waiting_payment ?? "";
   const refundOn = map.saleRefunded === "refund";
 
-  function setEvent(kind: "compra" | "abandono" | "refund", value: string | boolean) {
+  function setEvent(
+    kind: "compra" | "abandono" | "recuperacao" | "refund",
+    value: string | boolean,
+  ) {
     setEditing((prev) => {
       if (!prev) return prev;
       const m = { ...prev.stage_map };
       if (kind === "compra") {
         delete m.salePaid;
         delete m.saleApproved;
+        delete m.paid;
         if (value) {
-          m.salePaid = value as string;
-          m.saleApproved = value as string;
+          const v = value as string;
+          m.salePaid = v;
+          m.saleApproved = v;
+          m.paid = v;
         }
       } else if (kind === "abandono") {
         delete m.checkoutAbandoned;
@@ -128,12 +137,26 @@ export function WebhooksSettings() {
           m.abandonedCheckout = v;
           m.saleAbandonedCart = v;
         }
+      } else if (kind === "recuperacao") {
+        delete m.waiting_payment;
+        delete m.pixGenerated;
+        delete m.pixCreated;
+        if (value) {
+          const v = value as string;
+          m.waiting_payment = v;
+          m.pixGenerated = v;
+          m.pixCreated = v;
+        }
       } else {
         delete m.saleRefunded;
         delete m.saleChargeback;
+        delete m.refunded;
+        delete m.chargedback;
         if (value) {
           m.saleRefunded = "refund";
           m.saleChargeback = "refund";
+          m.refunded = "refund";
+          m.chargedback = "refund";
         }
       }
       return { ...prev, stage_map: m };
@@ -153,6 +176,7 @@ export function WebhooksSettings() {
       pipeline_id: editing.pipeline_id,
       stage_map: editing.stage_map,
       enabled: editing.enabled,
+      recovery_template: editing.recovery_template?.trim() || null,
     };
     const { error } = editing.id
       ? await supabase.from("gateway_webhook_config").update(row).eq("id", editing.id)
@@ -328,6 +352,44 @@ export function WebhooksSettings() {
                     ))}
                   </select>
                 </div>
+
+                <div className="grid gap-2">
+                  <Label className="text-muted-foreground">
+                    PIX não pago / recuperação → etapa
+                  </Label>
+                  <select
+                    className={selectCls}
+                    value={recuperacao}
+                    disabled={!editing.pipeline_id}
+                    onChange={(e) => setEvent("recuperacao", e.target.value)}
+                  >
+                    <option value="">Não criar</option>
+                    {editStages.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {recuperacao && (
+                  <div className="grid gap-2">
+                    <Label className="text-muted-foreground">
+                      Template de recuperação (WhatsApp)
+                    </Label>
+                    <Input
+                      value={editing.recovery_template ?? ""}
+                      onChange={(e) =>
+                        setEditing({ ...editing, recovery_template: e.target.value })
+                      }
+                      placeholder="ex.: eqv_pix_pendente"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Disparado quando chega um PIX não pago. Vazio = só cria o lead, sem
+                      mensagem. O agente assume quando a pessoa responde.
+                    </p>
+                  </div>
+                )}
 
                 <label className="flex items-center gap-2 text-sm text-foreground">
                   <input
